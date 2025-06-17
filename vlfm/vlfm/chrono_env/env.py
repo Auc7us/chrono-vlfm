@@ -1,3 +1,13 @@
+import shutil
+import os
+
+vis_dirs = ["tmp_vis", "tmp_vis_2"]
+for d in vis_dirs:
+    if os.path.exists(d):
+        shutil.rmtree(d)
+    os.makedirs(d, exist_ok=True)
+
+
 import time
 import vlfm.policy.chrono_policies
 import math
@@ -6,7 +16,6 @@ import pychrono.sensor as sens
 import pychrono.irrlicht as chronoirr
 import pychrono as chrono
 import sys
-import os
 import torch
 # Assuming the script is located in the 'experiments/apartment' directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +23,6 @@ project_root = os.path.abspath(os.path.join(current_dir, '../../'))
 sys.path.append(project_root)
 # Add the parent directory of 'models' to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 
 class ChronoEnv:
     def __init__(self, target_object: str = "chair"):
@@ -329,6 +337,7 @@ class ChronoEnv:
 
 
 if __name__ == "__main__":
+
     env = ChronoEnv()
     obs = env.reset()
     # Take fake step
