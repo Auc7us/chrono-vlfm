@@ -1,0 +1,11 @@
+habitat-lab/
+vlfm/GroundingDINO/
+vlfm/tmp_vis/
+vlfm/tmp_vis_2/
+vlfm/yolov7/
+vlfm/setup_env.sh
+vlfm/data/yolov7-e6e.pt
+vlfm/data/mobile_sam.pt
+vlfm/data/groundingdino_swint_ogc.pth
+vlfm/data/spot_pointnav_weights.pth
+vlfm/traced_model.pt
