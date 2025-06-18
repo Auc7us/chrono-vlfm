@@ -24,8 +24,11 @@ sys.path.append(project_root)
 # Add the parent directory of 'models' to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+FRAME_WIDTH = 1024
+FRAME_HEIGHT = 768
+
 class ChronoEnv:
-    def __init__(self, target_object: str = "chair"):
+    def __init__(self, target_object: str = "sofa"):
         self.my_system = None
 
         # Output directory
@@ -38,8 +41,8 @@ class ChronoEnv:
         self.update_rate = 30
 
         # Image width and height
-        self.image_width = 640 #213  (160, 213)
-        self.image_height = 480 #160
+        self.image_width = FRAME_WIDTH #213  (160, 213)
+        self.image_height = FRAME_HEIGHT #160
 
         # Camera's horizontal field of view
         self.fov = 1.408
@@ -347,7 +350,7 @@ if __name__ == "__main__":
     min_depth = 0
     max_depth = 5.5
     camera_fov = 80.67 #1.408 # in deg 80.67
-    image_width = 640 #213
+    image_width = FRAME_WIDTH #213
 
     # kwargs for itm policy
     # name = "ChronoITMPolicy"
@@ -355,7 +358,7 @@ if __name__ == "__main__":
     # text_prompt = "Find a target_object"
     use_max_confidence = False
     pointnav_policy_path = "data/pointnav_weights.pth"
-    depth_image_shape = (480, 640) # (160, 213)
+    depth_image_shape = (FRAME_HEIGHT, FRAME_WIDTH) # (160, 213)
     pointnav_stop_radius = 0.5
     object_map_erosion_size = 5
     exploration_thresh = 0.7
