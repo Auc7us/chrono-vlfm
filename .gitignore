@@ -9,3 +9,4 @@ vlfm/data/mobile_sam.pt
 vlfm/data/groundingdino_swint_ogc.pth
 vlfm/data/spot_pointnav_weights.pth
 vlfm/traced_model.pt
+*.lock

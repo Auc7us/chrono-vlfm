@@ -392,7 +392,7 @@ if __name__ == "__main__":
         agent_radius=agent_radius
     )
 
-    end_time = 10
+    end_time = 30
     control_timestep = 0.1
     time_count = 0
     masks = torch.zeros(1, 1)
@@ -438,3 +438,5 @@ if __name__ == "__main__":
         # print(vlfm_policy._policy_info)
 
         time_count += control_timestep
+    else :
+        print(f"Exited after reaching end_time={end_time}s")
