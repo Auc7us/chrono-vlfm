@@ -24,11 +24,11 @@ sys.path.append(project_root)
 # Add the parent directory of 'models' to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-FRAME_WIDTH = 1024
-FRAME_HEIGHT = 768
+FRAME_WIDTH = 640   
+FRAME_HEIGHT = 480
 
 class ChronoEnv:
-    def __init__(self, target_object: str = "sofa"):
+    def __init__(self, target_object: str = "microwave"):
         self.my_system = None
 
         # Output directory
@@ -103,6 +103,26 @@ class ChronoEnv:
         self.my_system.Add(mesh_body)
 
         # ---------------------------------------
+        # Add a target object to the environment
+
+        chair_path = os.path.join(project_root, "data/chrono_environment/target_object/blue_chair.obj")  # Adjust as needed
+        chair_mat = chrono.ChContactMaterialSMC()
+
+        chair = chrono.ChBodyEasyMesh(
+            chair_path,
+            100,        # density
+            False,      # no collision
+            True,       # visualize
+            True,       # smooth shading
+            chair_mat,
+            0.05       # envelope
+        )
+        chair.SetRot(chrono.Q_ROTATE_Y_TO_Z)
+        chair.SetPos(chrono.ChVector3d(-8.5, 1.5, 0.50))  
+        chair.SetFixed(True)
+        self.my_system.Add(chair)
+
+        # ---------------------------------------
 
         # Add camera sensor
 
@@ -135,13 +155,14 @@ class ChronoEnv:
             5.5, #3.66,                  # max lidar range
             sens.LidarBeamShape_RECTANGULAR,
             1,          # sample radius
-            0,       # divergence angle
-            0,       # divergence angle
+            0.3,       # divergence angle
+            0.3,       # divergence angle
             sens.LidarReturnMode_STRONGEST_RETURN)
 
         self.lidar.SetName("Lidar Sensor")
         self.lidar.SetLag(0)
-        self.lidar.SetCollectionWindow(1/20)
+        self.lidar.SetCollectionWindow(1/30)
+        
         self.lidar.PushFilter(sens.ChFilterVisualize(
             self.image_width, self.image_height, "depth camera"))
         self.lidar.PushFilter(sens.ChFilterDIAccess())
