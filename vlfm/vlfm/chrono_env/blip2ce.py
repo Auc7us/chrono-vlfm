@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import sys
+import os
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from blip2itm_custom import Blip2ITM
 from omegaconf import OmegaConf
-
 from lavis.processors.base_processor import BaseProcessor
 from lavis.common.registry import registry
 
@@ -23,10 +23,10 @@ def load_preprocess(preprocess_cfg):
     vis_proc_cfg = preprocess_cfg.get("vis_processor")
     txt_proc_cfg = preprocess_cfg.get("text_processor")
 
-    vis_processors["train"] = _build_proc_from_cfg(vis_proc_cfg.get("train") if vis_proc_cfg else None)
+    # vis_processors["train"] = _build_proc_from_cfg(vis_proc_cfg.get("train") if vis_proc_cfg else None)
     vis_processors["eval"] = _build_proc_from_cfg(vis_proc_cfg.get("eval") if vis_proc_cfg else None)
 
-    txt_processors["train"] = _build_proc_from_cfg(txt_proc_cfg.get("train") if txt_proc_cfg else None)
+    # txt_processors["train"] = _build_proc_from_cfg(txt_proc_cfg.get("train") if txt_proc_cfg else None)
     txt_processors["eval"] = _build_proc_from_cfg(txt_proc_cfg.get("eval") if txt_proc_cfg else None)
 
     return vis_processors, txt_processors
@@ -51,32 +51,54 @@ class BLIP2ITMWrapper:
 
         with torch.no_grad():
             out = self.model({"image": img_tensor, "text_input": txt_input}, match_head="itc")
-        return out["image_feats"]  # shape: (1, D)
+        return out["image_feats"].squeeze(0)
+
+def is_image_file(fn: str) -> bool:
+    return fn.lower().endswith((".jpg", ".jpeg", ".png"))
 
 def compute_cosine_similarity(feat1: torch.Tensor, feat2: torch.Tensor) -> float:
-    feat1 = F.normalize(feat1.view(1, -1), dim=-1)
-    feat2 = F.normalize(feat2.view(1, -1), dim=-1)
-    feat1 = feat1.unsqueeze(1)  # (1, 1, 8192)
-    feat2 = feat2.unsqueeze(2)  # (1, 8192, 1)    
-    sim_matrix = torch.bmm(feat1, feat2)
-    max_sim = sim_matrix.mean().item()
-
-    return max_sim
+    feat1 = F.normalize(feat1.view(1, -1), dim=-1).unsqueeze(1)  # (1, 1, 8192)
+    feat2 = F.normalize(feat2.view(1, -1), dim=-1).unsqueeze(2)  # (1, 8192, 1)   
+    sim = torch.bmm(feat1, feat2).mean().item()
+    return sim
 
 def main():
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} /path/to/image1.png /path/to/image2.png")
+        print(f"Usage: {sys.argv[0]} /path/to/room_images_dir /path/to/test_images_dir")
         sys.exit(1)
 
-    image1_path = sys.argv[1]
-    image2_path = sys.argv[2]
+    room_dir, test_dir = sys.argv[1], sys.argv[2]
+    if not os.path.isdir(room_dir) or not os.path.isdir(test_dir):
+        print("Both arguments must be existing directories.")
+        sys.exit(1)
 
     itm = BLIP2ITMWrapper()
-    feat1 = itm.extract_feats(image1_path)
-    feat2 = itm.extract_feats(image2_path)
+    fused_feats = None
 
-    sim_score = compute_cosine_similarity(feat1, feat2)
-    print(f"Cosine similarity between image features: {sim_score:.4f}")
+    for fn in sorted(os.listdir(room_dir)):
+        path = os.path.join(room_dir, fn)
+        if not is_image_file(path):
+            continue
+        feats = itm.extract_feats(path)  # (D,)
+        fused_feats = feats if fused_feats is None else torch.max(fused_feats, feats)
+    
+    if fused_feats is None:
+        print("No valid images found in room directory.")
+        sys.exit(1)
+
+    for fn in sorted(os.listdir(test_dir)):
+        path = os.path.join(test_dir, fn)
+        if not is_image_file(path):
+            continue
+        test_feats = itm.extract_feats(path)  # (D,)
+        score = compute_cosine_similarity(fused_feats, test_feats)
+        print(f"{fn:50s}  cosine similarity = {score:.4f}")
+
+    # feat1 = itm.extract_feats(image1_path)
+    # feat2 = itm.extract_feats(image2_path)
+
+    # sim_score = compute_cosine_similarity(feat1, feat2)
+    # print(f"Cosine similarity between image features: {sim_score:.4f}")
 
 if __name__ == "__main__":
     main()
