@@ -101,53 +101,79 @@ def compute_cosine_similarity(feat1: torch.Tensor, feat2: torch.Tensor) -> float
 
 def main():
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} /path/to/room_images_dir /path/to/test_images_dir")
+        print(f"Usage: {sys.argv[0]} /path/to/images_root /path/to/test_images_dir")
         sys.exit(1)
 
-    room_dir, test_dir = sys.argv[1], sys.argv[2]
-    if not os.path.isdir(room_dir) or not os.path.isdir(test_dir):
+    images_root, test_dir = sys.argv[1], sys.argv[2]
+    if not os.path.isdir(images_root) or not os.path.isdir(test_dir):
         print("Both arguments must be existing directories.")
         sys.exit(1)
 
     itm = BLIP2ITMWrapper()
-    fused_feats = None
-    mha = None
 
-    for fn in sorted(os.listdir(room_dir)):
-        path = os.path.join(room_dir, fn)
-        if not is_image_file(path):
+    room_feature_db = {}  # (house_id, room_id) -> fused_feats
+    mha_cache = {}  # one MHA per room (optional)
+
+    # 1. Traverse all house dirs starting with '8'
+    for house_name in sorted(os.listdir(images_root)):
+        if not house_name.startswith("8"):
+            continue
+        house_path = os.path.join(images_root, house_name)
+        if not os.path.isdir(house_path):
             continue
 
-        feats = itm.extract_feats(path)  # (32, 256)
-        
-        if fused_feats is None:
-            # first view: initialize fused_feats and MHA
-            fused_feats = feats.clone()
-            D = fused_feats.shape[1]  # 256
-            # choose num_heads dividing D
-            num_heads = 8 if D % 8 == 0 else 1
-            mha = MultiheadAttention(embed_dim=D, num_heads=num_heads, batch_first=True).to(itm.device)
-        else:
-        # cross-attention fusion options:
-            # fused_feats = cross_attention_fusion(fused_feats, feats, mha)
-            fused_feats = per_query_gated_fusion(fused_feats, feats)
-        # other fusion options:
-            # fused_feats = torch.max(fused_feats, feats)             # max-pool
-            # fused_feats = (fused_feats + feats) * 0.5               # simple average
-            # α = 0.2                                                 # EMA
-            # fused_feats = fused_feats * (1-α) + feats * α
+        # 2. Traverse all rooms inside this house
+        for room_name in sorted(os.listdir(house_path)):
+            room_path = os.path.join(house_path, room_name)
+            if not os.path.isdir(room_path):
+                continue
 
-    if fused_feats is None:
-        print("No valid images found in room directory.")
+            fused_feats = None
+            mha = None
+            for fn in sorted(os.listdir(room_path)):
+                img_path = os.path.join(room_path, fn)
+                if not is_image_file(img_path):
+                    continue
+
+                feats = itm.extract_feats(img_path)  # (32, 256)
+                if fused_feats is None:
+                    fused_feats = feats.clone()
+                    D = fused_feats.shape[1]
+                    num_heads = 8 if D % 8 == 0 else 1
+                    mha = MultiheadAttention(embed_dim=D, num_heads=num_heads, batch_first=True).to(itm.device)
+                else:
+                    # fused_feats = cross_attention_fusion(fused_feats, feats, mha)
+                    fused_feats = per_query_gated_fusion(fused_feats, feats)
+
+            if fused_feats is not None:
+                room_feature_db[(house_name, room_name)] = fused_feats
+                mha_cache[(house_name, room_name)] = mha
+
+    if not room_feature_db:
+        print("No valid room features found.")
         sys.exit(1)
 
+    # 3. Compare each test image to all room features
     for fn in sorted(os.listdir(test_dir)):
-        path = os.path.join(test_dir, fn)
-        if not is_image_file(path):
+        test_path = os.path.join(test_dir, fn)
+        if not is_image_file(test_path):
             continue
-        test_feats = itm.extract_feats(path)  # (32, 256)
-        score = compute_cosine_similarity(fused_feats, test_feats)
-        print(f"{fn:50s}  cosine similarity = {score:.4f}")
+        test_feats = itm.extract_feats(test_path)
+
+        best_score = -1.0
+        best_match = None
+
+        for (house_name, room_name), feats in room_feature_db.items():
+            score = compute_cosine_similarity(feats, test_feats)
+            if score > best_score and score > 0.3:  # threshold
+                best_score = score
+                best_match = (house_name, room_name)
+
+        if best_match:
+            print(f"{fn:50s} matched with {best_match[0]}/{best_match[1]:20s}  cosine similarity = {best_score:.4f}")
+        else:
+            print(f"{fn:50s} no matching room found.")
+
 
 if __name__ == "__main__":
     main()
