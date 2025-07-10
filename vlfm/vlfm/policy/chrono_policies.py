@@ -148,30 +148,6 @@ class ChronoMixin:
             "habitat_start_yaw": observations["compass"].item(),
         }
 
-# @baseline_registry.register_policy
-# class OracleFBEPolicy(ChronoMixin, BaseObjectNavPolicy):
-#     def _explore(self, observations: TensorDict) -> Tensor:
-#         explorer_key = [k for k in observations.keys() if k.endswith("_explorer")][0]
-#         pointnav_action = observations[explorer_key]
-#         return pointnav_action
-
-
-# @baseline_registry.register_policy
-# class SuperOracleFBEPolicy(ChronoMixin, BaseObjectNavPolicy):
-#     def act(
-#         self,
-#         observations: TensorDict,
-#         rnn_hidden_states: Any,  # can be anything because it is not used
-#         *args: Any,
-#         **kwargs: Any,
-#     ) -> PolicyActionData:
-#         return PolicyActionData(
-#             actions=observations[BaseExplorer.cls_uuid],
-#             rnn_hidden_states=rnn_hidden_states,
-#             policy_info=[self._policy_info],
-#         )
-
-
 class ChronoITMPolicy(ChronoMixin, ITMPolicy):
     pass
 

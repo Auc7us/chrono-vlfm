@@ -6,7 +6,7 @@ import math
 import torch.nn.functional as F
 from torch.nn import MultiheadAttention
 from PIL import Image
-from blip2itm_custom import Blip2ITM
+from blip2_image_text_matching_custom_itc import Blip2ITM
 from omegaconf import OmegaConf
 from lavis.processors.base_processor import BaseProcessor
 from lavis.common.registry import registry
@@ -25,9 +25,7 @@ def load_preprocess(preprocess_cfg):
     vis_proc_cfg = preprocess_cfg.get("vis_processor")
     txt_proc_cfg = preprocess_cfg.get("text_processor")
 
-    # vis_processors["train"] = _build_proc_from_cfg(vis_proc_cfg.get("train") if vis_proc_cfg else None)
     vis_processors["eval"] = _build_proc_from_cfg(vis_proc_cfg.get("eval") if vis_proc_cfg else None)
-    # txt_processors["train"] = _build_proc_from_cfg(txt_proc_cfg.get("train") if txt_proc_cfg else None)
     txt_processors["eval"] = _build_proc_from_cfg(txt_proc_cfg.get("eval") if txt_proc_cfg else None)
 
     return vis_processors, txt_processors
@@ -57,23 +55,6 @@ class BLIP2ITMWrapper:
 
 def is_image_file(fn: str) -> bool:
     return fn.lower().endswith((".jpg", ".jpeg", ".png"))
-
-def cross_attention_fusion(
-    fused_feats: torch.Tensor, new_feats:  torch.Tensor, mha: MultiheadAttention) -> torch.Tensor:
-    """
-    Fuse two Q-Former outputs via one cross-attention step.
-    fused_feats and new_feats shape: (K=32, D=256)
-    mha should be initialized with embed_dim=256, appropriate num_heads.
-    """
-    # add batch and seq dims: (1, 32, 256)
-    Qb = fused_feats.unsqueeze(0)
-    Qo = new_feats.unsqueeze(0)
-    # cross-attend: queries from base, keys/values from new
-    C, _ = mha(query=Qb, key=Qo, value=Qo)
-    # remove batch dim: (32, 256)
-    C = C.squeeze(0)
-    # residual add
-    return fused_feats + C
 
 def per_query_gated_fusion(Qb: torch.Tensor, Qn: torch.Tensor) -> torch.Tensor:
     # Qb, Qn: (K, D)
@@ -112,7 +93,6 @@ def main():
     itm = BLIP2ITMWrapper()
 
     room_feature_db = {}  # (house_id, room_id) -> fused_feats
-    mha_cache = {}  # one MHA per room (optional)
 
     # 1. Traverse all house dirs starting with '8'
     for house_name in sorted(os.listdir(images_root)):
@@ -129,7 +109,6 @@ def main():
                 continue
 
             fused_feats = None
-            mha = None
             for fn in sorted(os.listdir(room_path)):
                 img_path = os.path.join(room_path, fn)
                 if not is_image_file(img_path):
@@ -140,14 +119,16 @@ def main():
                     fused_feats = feats.clone()
                     D = fused_feats.shape[1]
                     num_heads = 8 if D % 8 == 0 else 1
-                    mha = MultiheadAttention(embed_dim=D, num_heads=num_heads, batch_first=True).to(itm.device)
-                else:
-                    # fused_feats = cross_attention_fusion(fused_feats, feats, mha)
-                    fused_feats = per_query_gated_fusion(fused_feats, feats)
 
+                else:
+        
+                    fused_feats = per_query_gated_fusion(fused_feats, feats)  # paired gated fusion (best performer)
+                    # fused_feats = torch.max(fused_feats, feats)             # max-pool (slightly better than EMA)
+                    # fused_feats = (fused_feats + feats) * 0.5               # EMA (worst performer)
+            
             if fused_feats is not None:
                 room_feature_db[(house_name, room_name)] = fused_feats
-                mha_cache[(house_name, room_name)] = mha
+                
 
     if not room_feature_db:
         print("No valid room features found.")
@@ -159,20 +140,13 @@ def main():
         if not is_image_file(test_path):
             continue
         test_feats = itm.extract_feats(test_path)
-
-        best_score = -1.0
-        best_match = None
-
+        
+        print(f"Scores for {fn}:")
         for (house_name, room_name), feats in room_feature_db.items():
             score = compute_cosine_similarity(feats, test_feats)
-            if score > best_score and score > 0.3:  # threshold
-                best_score = score
-                best_match = (house_name, room_name)
+            print(f"  {house_name}/{room_name:20s}  cosine similarity = {score:.4f}")
+        print()
 
-        if best_match:
-            print(f"{fn:50s} matched with {best_match[0]}/{best_match[1]:20s}  cosine similarity = {best_score:.4f}")
-        else:
-            print(f"{fn:50s} no matching room found.")
 
 
 if __name__ == "__main__":
