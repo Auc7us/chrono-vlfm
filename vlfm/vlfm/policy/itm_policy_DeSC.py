@@ -322,7 +322,8 @@ class BaseITMPolicy(BaseObjectNavPolicy):
             batch_results, self._observations_cache["value_map_rgbd"]
         ):
             cosine, feats, novelty = zip(*[(c, f, n) for c, f, n in infer_out])
-            self._value_map.update_map(np.array(cosine), depth, tf, min_depth, max_depth, fov)
+            updated_cosine = np.array(cosine) * np.array(novelty)
+            self._value_map.update_map(np.array(updated_cosine), depth, tf, min_depth, max_depth, fov)
 
         self._value_map.update_agent_traj(
             self._observations_cache["robot_xy"],
