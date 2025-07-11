@@ -17,6 +17,7 @@ from .itm_policy_DeSC import ITMPolicy, ITMPolicyV2, ITMPolicyV3
 import os
 from typing import Any, Dict, Union, Tuple
 
+from vlfm.chrono_env.communication_manager import FusedFeatureExchangeManager
 
 class TorchActionIDs:
     STOP = torch.tensor([[0]], dtype=torch.long)
@@ -35,13 +36,16 @@ class ChronoMixin:
     _compute_frontiers: bool = True
     _visualize: bool = True
 
-    def __init__(self, camera_height: float, min_depth: float, max_depth: float, camera_fov: float, image_width: int, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, camera_height: float, min_depth: float, max_depth: float, camera_fov: float, robot_id: int, comms_manager: FusedFeatureExchangeManager, image_width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._camera_height = camera_height
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._camera_fov = np.deg2rad(camera_fov)
         self._image_width = image_width
+        self._robot_id = robot_id
+        self._comm_manager = comms_manager
+        self._comm_manager.register_agent(self._robot_id)
         # Convert to radians if in degrees
         camera_fov_rad = np.radians(camera_fov)
         self._fx = self._fy = image_width / (2 * np.tan(camera_fov_rad / 2))
@@ -147,6 +151,9 @@ class ChronoMixin:
             ],
             "habitat_start_yaw": observations["compass"].item(),
         }
+    
+    def retrieve_peer_features(self):
+        return self._comm_manager.retrieve(self._robot_id)
 
 class ChronoITMPolicy(ChronoMixin, ITMPolicy):
     pass

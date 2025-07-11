@@ -252,7 +252,7 @@ class BaseITMPolicy(BaseObjectNavPolicy):
             # maps view_idx -> prompt_idx -> {'fused': Tensor, 'count': int}
             self._fuse_state = {}
             # flat list of fused embeddings
-            self._fused_feats = []
+            # self._fused_feats = []
 
         for view_idx, infer_out in enumerate(batch_results):
             view_state = self._fuse_state.setdefault(view_idx, {})
@@ -269,7 +269,8 @@ class BaseITMPolicy(BaseObjectNavPolicy):
 
                 # once we've fused 8, record and reset
                 if state['count'] >= 8:
-                    self._fused_feats.append(state['fused'])
+                    # self._fused_feats.append(state['fused'])
+                    self._comm_manager.push(self._robot_id, state['fused'])
                     state['fused'] = None
                     state['count'] = 0
 
@@ -289,6 +290,11 @@ class BaseITMPolicy(BaseObjectNavPolicy):
         ]
 
         self._fuse_image_features(batch_results)
+
+        peer_feats = self.retrieve_peer_features()
+        print("Length of the peer features received by Agent", self._robot_id, ":", len(peer_feats))
+        # for feat in peer_feats:
+        #     print(feat.shape)
         
         for infer_out, (rgb, depth, tf, min_depth, max_depth, fov) in zip(
             batch_results, self._observations_cache["value_map_rgbd"]

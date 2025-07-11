@@ -3,6 +3,7 @@
 import argparse
 import time
 import vlfm.policy.chrono_policy_DeSC as DeSC
+from vlfm.chrono_env.communication_manager import FusedFeatureExchangeManager
 import math
 import numpy as np
 import pychrono.sensor as sens
@@ -307,6 +308,7 @@ if __name__ == "__main__":
     coco_threshold = 0.8
     non_coco_threshold = 0.4
     agent_radius = 0.15
+    comms = FusedFeatureExchangeManager()
 
     policy_1 = DeSC.ChronoITMPolicyV2(
         camera_height=camera_height,
@@ -328,7 +330,9 @@ if __name__ == "__main__":
         vqa_prompt=vqa_prompt,
         coco_threshold=coco_threshold,
         non_coco_threshold=non_coco_threshold,
-        agent_radius=agent_radius
+        agent_radius=agent_radius,
+        robot_id=1,
+        comms_manager=comms
     )
 
     policy_2 = DeSC.ChronoITMPolicyV2(
@@ -351,7 +355,9 @@ if __name__ == "__main__":
         vqa_prompt=vqa_prompt,
         coco_threshold=coco_threshold,
         non_coco_threshold=non_coco_threshold,
-        agent_radius=agent_radius
+        agent_radius=agent_radius,
+        robot_id=2,
+        comms_manager=comms
     )
 
     end_time = 30
