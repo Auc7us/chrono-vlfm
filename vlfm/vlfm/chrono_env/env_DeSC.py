@@ -180,26 +180,42 @@ class ChronoEnv:
         return self.observations
 
     def step(self, actions):
-        if not self._object_found:
-            for i, action in enumerate(actions):
-                self._do_action(action, self.virtual_robots[i])
-            for _ in range(self.steps_per_control):
-                self.manager.Update()
-                self.my_system.DoStepDynamics(self.timestep)
+        for i, action in enumerate(actions):
+            self._do_action(action, self.virtual_robots[i])
+        for _ in range(self.steps_per_control):
+            self.manager.Update()
+            self.my_system.DoStepDynamics(self.timestep)
 
         self.vis.BeginScene()
         self.vis.Render()
         self.vis.EndScene()
 
         new_observations = [self._get_observations(i) for i in range(len(self.virtual_robots))]
-        for i, action in enumerate(actions):
-            if self._get_stop(action):
-                self._object_found = True
-                target = self.target_objects[i]
-                print(f"Agent {i} found the {target}")
-                break
+        stop = all(self._get_stop(action) for action in actions)
+        return new_observations, stop
 
-        return new_observations, self._object_found
+    ######################################## Common stop logic commented out for testing
+    # def step(self, actions):
+    #     if not self._object_found:
+    #         for i, action in enumerate(actions):
+    #             self._do_action(action, self.virtual_robots[i])
+    #         for _ in range(self.steps_per_control):
+    #             self.manager.Update()
+    #             self.my_system.DoStepDynamics(self.timestep)
+
+    #     self.vis.BeginScene()
+    #     self.vis.Render()
+    #     self.vis.EndScene()
+
+    #     new_observations = [self._get_observations(i) for i in range(len(self.virtual_robots))]
+    #     for i, action in enumerate(actions):
+    #         if self._get_stop(action):
+    #             self._object_found = True
+    #             target = self.target_objects[i]
+    #             print(f"Agent {i} found the {target}")
+    #             break
+
+    #     return new_observations, self._object_found
 
     def _get_stop(self, action):
         if isinstance(action, torch.Tensor) and action.numel() == 1 and action.item() == 0:

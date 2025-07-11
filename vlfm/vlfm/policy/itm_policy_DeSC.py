@@ -64,7 +64,6 @@ class BaseITMPolicy(BaseObjectNavPolicy):
         self._last_value = float("-inf")
         self._last_frontier = np.zeros(2)
         self._fuse_state = {}
-        self._fused_feats = []
 
     def _explore(self, observations: Union[Dict[str, Tensor], "TensorDict"]) -> Tensor:
         frontiers = self._observations_cache["frontier_sensor"]
@@ -274,9 +273,33 @@ class BaseITMPolicy(BaseObjectNavPolicy):
                     state['fused'] = None
                     state['count'] = 0
 
+    def _attach_peer_scores(self, batch_results):
+        """
+        For each (view, prompt) entry we compute the highest cosine similarity
+        against peer features. If it’s at least 0.8 we keep it, otherwise we use 0 and treat the current view as unexplored
+        Returns:
+        [view_idx][prompt_idx] = (local_cosine, feat, peer_score)
+        """
+        peer_feats = getattr(self, "_peer_feats_index", [])
+        new_batch = []
+        for view_results in batch_results:
+            new_view = []
+            for local_cos, feat in view_results:
+                # find max similarity across all peer features
+                max_score = 0.0
+                for peer_feat in peer_feats:
+                    score = compute_cosine_similarity(feat, peer_feat)
+                    if score > max_score:
+                        max_score = score
+                novelty_score = 1-max_score if max_score >= 0.85 else 1.0
+                if (novelty_score < 0.2):
+                    print("Robot",self._robot_id,": Match found, Area was explored by a peer, novelty score:", novelty_score)
+                new_view.append((local_cos, feat, novelty_score))
+            new_batch.append(new_view)
+        return new_batch
+
     def _update_value_map(self) -> None:
         all_rgb = [i[0] for i in self._observations_cache["value_map_rgbd"]]
-
         # for each rgb view, call infer() on each prompt -> returns (cosine, feats_tensor)
         batch_results = [
             [
@@ -290,17 +313,15 @@ class BaseITMPolicy(BaseObjectNavPolicy):
         ]
 
         self._fuse_image_features(batch_results)
+        self.retrieve_peer_features()
+        batch_results = self._attach_peer_scores(batch_results)
 
-        peer_feats = self.retrieve_peer_features()
-        print("Length of the peer features received by Agent", self._robot_id, ":", len(peer_feats))
-        # for feat in peer_feats:
-        #     print(feat.shape)
+        print("Length of the peer features received by Agent", self._robot_id, ":", len(self._peer_feats_index))
         
         for infer_out, (rgb, depth, tf, min_depth, max_depth, fov) in zip(
             batch_results, self._observations_cache["value_map_rgbd"]
         ):
-            cosine, feats = zip(*infer_out)
-
+            cosine, feats, novelty = zip(*[(c, f, n) for c, f, n in infer_out])
             self._value_map.update_map(np.array(cosine), depth, tf, min_depth, max_depth, fov)
 
         self._value_map.update_agent_traj(

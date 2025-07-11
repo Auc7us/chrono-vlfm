@@ -46,6 +46,7 @@ class ChronoMixin:
         self._robot_id = robot_id
         self._comm_manager = comms_manager
         self._comm_manager.register_agent(self._robot_id)
+        self._peer_feats_index: List[Tensor] = []
         # Convert to radians if in degrees
         camera_fov_rad = np.radians(camera_fov)
         self._fx = self._fy = image_width / (2 * np.tan(camera_fov_rad / 2))
@@ -70,6 +71,7 @@ class ChronoMixin:
         parent_cls: BaseObjectNavPolicy = super()  # type: ignore
         parent_cls._reset()
         self._start_yaw = None
+        self._peer_feats_index = []
 
     def _get_policy_info(self, detections: ObjectDetections) -> Dict[str, Any]:
         """Get policy info for logging"""
@@ -153,7 +155,9 @@ class ChronoMixin:
         }
     
     def retrieve_peer_features(self):
-        return self._comm_manager.retrieve(self._robot_id)
+        new_feats = self._comm_manager.retrieve(self._robot_id)
+        self._peer_feats_index.extend(new_feats)
+
 
 class ChronoITMPolicy(ChronoMixin, ITMPolicy):
     pass
