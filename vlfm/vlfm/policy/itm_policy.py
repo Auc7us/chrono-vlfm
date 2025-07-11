@@ -12,6 +12,7 @@ from vlfm.mapping.value_map import ValueMap
 from vlfm.policy.base_objectnav_policy import BaseObjectNavPolicy
 from vlfm.policy.utils.acyclic_enforcer import AcyclicEnforcer
 from vlfm.utils.geometry_utils import closest_point_within_threshold
+from vlfm.utils.feature_fusion import per_query_gated_fusion, compute_cosine_similarity
 from vlfm.vlm.blip2itm import BLIP2ITMClient
 from vlfm.vlm.detections import ObjectDetections
 import matplotlib.pyplot as plt
@@ -62,6 +63,8 @@ class BaseITMPolicy(BaseObjectNavPolicy):
         self._acyclic_enforcer = AcyclicEnforcer()
         self._last_value = float("-inf")
         self._last_frontier = np.zeros(2)
+        self._fuse_state = {}
+        self._fused_feats = []
 
     def _explore(self, observations: Union[Dict[str, Tensor], "TensorDict"]) -> Tensor:
         frontiers = self._observations_cache["frontier_sensor"]
@@ -247,11 +250,45 @@ class BaseITMPolicy(BaseObjectNavPolicy):
 
         return policy_info
 
+    def _fuse_image_features(self, batch_results):
+        """
+        Streaming fusion: for each (view, prompt) pair we fuse one image feature embedding at a time.
+        Once 8 have been accumulated for that (view,prompt), append the fused
+        embedding to self._fused_feats and reset.
+        """
+        # Initialize state on first call
+        if not hasattr(self, '_fuse_state'):
+            # maps view_idx -> prompt_idx -> {'fused': Tensor, 'count': int}
+            self._fuse_state = {}
+            # flat list of fused embeddings
+            self._fused_feats = []
+
+        for view_idx, infer_out in enumerate(batch_results):
+            view_state = self._fuse_state.setdefault(view_idx, {})
+            for prompt_idx, (_cosine, feat) in enumerate(infer_out):
+                state = view_state.setdefault(prompt_idx, {'fused': None, 'count': 0})
+
+                # accumulate or start
+                if state['fused'] is None:
+                    state['fused'] = feat
+                else:
+                    state['fused'] = per_query_gated_fusion(state['fused'], feat)
+
+                state['count'] += 1
+
+                # once we've fused 8, record and reset
+                if state['count'] >= 8:
+                    self._fused_feats.append(state['fused'])
+                    state['fused'] = None
+                    state['count'] = 0
+
     def _update_value_map(self) -> None:
         all_rgb = [i[0] for i in self._observations_cache["value_map_rgbd"]]
-        cosines = [
+
+        # for each rgb view, call infer() on each prompt -> returns (cosine, feats_tensor)
+        batch_results = [
             [
-                self._itm.cosine(
+                self._itm.infer(
                     rgb,
                     p.replace("target_object", self._target_object.replace("|", "/")),
                 )
@@ -259,9 +296,14 @@ class BaseITMPolicy(BaseObjectNavPolicy):
             ]
             for rgb in all_rgb
         ]
-        for cosine, (rgb, depth, tf, min_depth, max_depth, fov) in zip(
-            cosines, self._observations_cache["value_map_rgbd"]
+
+        self._fuse_image_features(batch_results)
+        
+        for infer_out, (rgb, depth, tf, min_depth, max_depth, fov) in zip(
+            batch_results, self._observations_cache["value_map_rgbd"]
         ):
+            cosine, feats = zip(*infer_out)
+
             self._value_map.update_map(np.array(cosine), depth, tf, min_depth, max_depth, fov)
 
         self._value_map.update_agent_traj(

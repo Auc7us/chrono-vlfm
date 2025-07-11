@@ -4,39 +4,52 @@ from typing import Any, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from PIL import Image
-
+from vlfm.chrono_env.blip2_image_text_matching_custom_itc import Blip2ITM
 from .server_wrapper import ServerMixin, host_model, send_request, str_to_image
+from omegaconf import OmegaConf
+from lavis.processors.base_processor import BaseProcessor
+from lavis.common.registry import registry
 
-try:
-    from lavis.models import load_model_and_preprocess
-except ModuleNotFoundError:
-    print("Could not import lavis. This is OK if you are only using the client.")
+def load_preprocess(preprocess_cfg):
+    def _build_proc_from_cfg(cfg):
+        return (
+            registry.get_processor_class(cfg.name).from_config(cfg)
+            if cfg is not None
+            else BaseProcessor()
+        )
 
+    vis_processors = dict()
+    txt_processors = dict()
+
+    vis_proc_cfg = preprocess_cfg.get("vis_processor")
+    txt_proc_cfg = preprocess_cfg.get("text_processor")
+
+    vis_processors["eval"] = _build_proc_from_cfg(vis_proc_cfg.get("eval") if vis_proc_cfg else None)
+    txt_processors["eval"] = _build_proc_from_cfg(txt_proc_cfg.get("eval") if txt_proc_cfg else None)
+
+    return vis_processors, txt_processors
 
 class BLIP2ITM:
     """BLIP 2 Image-Text Matching model."""
 
-    def __init__(
-        self,
-        name: str = "blip2_image_text_matching",
-        model_type: str = "pretrain",
-        device: Optional[Any] = None,
-    ) -> None:
+    def __init__(self, name: str = "blip2_image_text_matching_custom_itc", model_type: str = "pretrain", device: Optional[Any] = None,) -> None:
         if device is None:
             device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
-
-        self.model, self.vis_processors, self.text_processors = load_model_and_preprocess(
-            name=name,
-            model_type=model_type,
-            is_eval=True,
-            device=device,
-        )
         self.device = device
 
-    def cosine(self, image: np.ndarray, txt: str) -> float:
+        self.model = Blip2ITM.from_pretrained(model_type=model_type)
+        self.model.eval().to(self.device)
+
+        cfg_path = Blip2ITM.default_config_path(model_type)
+        preprocess_cfg = OmegaConf.load(cfg_path).preprocess
+        self.vis_processors, self.text_processors = load_preprocess(preprocess_cfg)
+
+    def infer(self, image: np.ndarray, txt: str) -> float:
         """
-        Compute the cosine similarity between the image and the prompt.
+        Run inference on the model to compute cosine similarity between an image and a text prompt
+        and extract image features projected to language space.
 
         Args:
             image (numpy.ndarray): The input image as a numpy array.
@@ -44,24 +57,26 @@ class BLIP2ITM:
 
         Returns:
             float: The cosine similarity between the image and the prompt.
+            tensor: The image features extracted by the model projected to language space.
         """
         pil_img = Image.fromarray(image)
         img = self.vis_processors["eval"](pil_img).unsqueeze(0).to(self.device)
         txt = self.text_processors["eval"](txt)
         with torch.inference_mode():
-            cosine = self.model({"image": img, "text_input": txt}, match_head="itc").item()
+            out = self.model({"image": img, "text_input": txt}, match_head="itc")
 
-        return cosine
-
+        return out
 
 class BLIP2ITMClient:
-    def __init__(self, port: int = 12182):
+    def __init__(self, port: int = 12182, device=None):
         self.url = f"http://localhost:{port}/blip2itm"
+        self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
 
-    def cosine(self, image: np.ndarray, txt: str) -> float:
-        print(f"BLIP2ITMClient.cosine: {image.shape}, {txt}")
-        response = send_request(self.url, image=image, txt=txt)
-        return float(response["response"])
+    def infer(self, image: np.ndarray, txt: str) -> float:
+        print(f"BLIP2ITMClient.infer: {image.shape}, {txt}")
+        out = send_request(self.url, image=image, txt=txt)
+        feats = torch.tensor(out["image_feats"], device=self.device)
+        return out["score"], feats
 
 
 if __name__ == "__main__":
@@ -74,9 +89,14 @@ if __name__ == "__main__":
     print("Loading model...")
 
     class BLIP2ITMServer(ServerMixin, BLIP2ITM):
-        def process_payload(self, payload: dict) -> dict:
-            image = str_to_image(payload["image"])
-            return {"response": self.cosine(image, payload["txt"])}
+        def process_payload(self, payload):
+            img = str_to_image(payload["image"])
+            # out = self.model({"image": img, "text_input": payload["txt"]}, match_head="itc")
+            out = self.infer(img, payload["txt"])
+            return {
+                "score":          out["score"].item(),
+                "image_feats":    out["image_feats"].squeeze(0).cpu().tolist(),
+            }
 
     blip = BLIP2ITMServer()
     print("Model loaded!")
