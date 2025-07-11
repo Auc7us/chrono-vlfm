@@ -1,5 +1,6 @@
 # this one sort of works but takes a different path than the original when navigating to the bathroom
 
+import argparse
 import time
 import vlfm.policy.chrono_policies
 import math
@@ -271,7 +272,12 @@ class ChronoEnv:
 
 if __name__ == "__main__":
 
-    env = ChronoEnv('microwave', num_agents=2)
+    parser = argparse.ArgumentParser( description="Run ChronoEnv DeSC with specified targets and number of agents")
+    parser.add_argument( "--targets", required=True, help="One or more object names seperated by '|' -- e.g. microwave|chair|tv")
+    parser.add_argument( "--num_agents", type=int, default=2, help="Number of collabrative agents to spawn")
+    args = parser.parse_args()
+
+    env = ChronoEnv(args.targets, num_agents=args.num_agents)
     obs = env.reset()
     camera_height = 0.5
     min_depth = 0
