@@ -2,7 +2,7 @@
 
 import argparse
 import time
-import vlfm.policy.chrono_policies
+import vlfm.policy.chrono_policy_DeSC as DeSC
 import math
 import numpy as np
 import pychrono.sensor as sens
@@ -56,6 +56,7 @@ class ChronoEnv:
         self.virtual_robots = []
         self.lidar_list = []
         self.cam_list = []
+        self._object_found = False
 
     def reset(self):
         self.my_system = chrono.ChSystemSMC()
@@ -178,19 +179,26 @@ class ChronoEnv:
         return self.observations
 
     def step(self, actions):
-        for i, action in enumerate(actions):
-            self._do_action(action, self.virtual_robots[i])
-        for _ in range(self.steps_per_control):
-            self.manager.Update()
-            self.my_system.DoStepDynamics(self.timestep)
+        if not self._object_found:
+            for i, action in enumerate(actions):
+                self._do_action(action, self.virtual_robots[i])
+            for _ in range(self.steps_per_control):
+                self.manager.Update()
+                self.my_system.DoStepDynamics(self.timestep)
 
         self.vis.BeginScene()
         self.vis.Render()
         self.vis.EndScene()
 
         new_observations = [self._get_observations(i) for i in range(len(self.virtual_robots))]
-        stop = all(self._get_stop(action) for action in actions)
-        return new_observations, stop
+        for i, action in enumerate(actions):
+            if self._get_stop(action):
+                self._object_found = True
+                target = self.target_objects[i]
+                print(f"Agent {i} found the {target}")
+                break
+
+        return new_observations, self._object_found
 
     def _get_stop(self, action):
         if isinstance(action, torch.Tensor) and action.numel() == 1 and action.item() == 0:
@@ -227,7 +235,6 @@ class ChronoEnv:
         quat_list = [robot.GetRot().e0, robot.GetRot().e1, robot.GetRot().e2, robot.GetRot().e3]
         yaw = self.quaternion_to_yaw(quat_list)
         robot_yaw = torch.tensor(yaw, dtype=torch.float32)
-        print("target_object: ", self.target_objects[idx])
         target_object = self.target_objects[idx]
         obs_dict = {
             "rgb": camera_data,
@@ -284,11 +291,7 @@ if __name__ == "__main__":
     max_depth = 5.5
     camera_fov = 80.67 #1.408 # in deg 80.67
     image_width = FRAME_WIDTH 
-
-    # kwargs for itm policy
-    # name = "ChronoITMPolicy"
     text_prompt = "Seems like there is a target_object ahead."
-    # text_prompt = "Find a target_object"
     use_max_confidence = False
     pointnav_policy_path = "data/pointnav_weights.pth"
     depth_image_shape = (FRAME_HEIGHT, FRAME_WIDTH) 
@@ -305,7 +308,7 @@ if __name__ == "__main__":
     non_coco_threshold = 0.4
     agent_radius = 0.15
 
-    policy_1 = vlfm.policy.chrono_policies.ChronoITMPolicyV2(
+    policy_1 = DeSC.ChronoITMPolicyV2(
         camera_height=camera_height,
         min_depth=min_depth,
         max_depth=max_depth,
@@ -328,7 +331,7 @@ if __name__ == "__main__":
         agent_radius=agent_radius
     )
 
-    policy_2 = vlfm.policy.chrono_policies.ChronoITMPolicyV2(
+    policy_2 = DeSC.ChronoITMPolicyV2(
         camera_height=camera_height,
         min_depth=min_depth,
         max_depth=max_depth,
