@@ -10,8 +10,6 @@ import torch.nn.functional as F
 from lavis.common.registry import registry
 from lavis.models.blip2_models.blip2_qformer import Blip2Qformer
 
-
-# @registry.register_model("blip2_image_text_matching")
 class Blip2ITM(Blip2Qformer):
     """
     BLIP Image-Text Matching (ITM) model.
@@ -20,8 +18,8 @@ class Blip2ITM(Blip2Qformer):
         - coco: fintuned model on coco
     Usage:
         >>> from lavis.models import load_model
-        >>> model = load_model("blip2_image_text_matching", "pretrained")
-        >>> model = load_model("blip2_image_text_matching", "coco")
+        >>> model = load_model("blip2_image_text_matching_custom_itc", "pretrained")
+        >>> model = load_model("blip2_image_text_matching_custom_itc", "coco")
     """
 
     def __init__(

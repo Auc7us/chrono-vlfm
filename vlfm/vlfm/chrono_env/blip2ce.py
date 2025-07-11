@@ -4,7 +4,6 @@ import os
 import torch
 import math
 import torch.nn.functional as F
-from torch.nn import MultiheadAttention
 from PIL import Image
 from blip2_image_text_matching_custom_itc import Blip2ITM
 from omegaconf import OmegaConf
@@ -140,7 +139,7 @@ def main():
         if not is_image_file(test_path):
             continue
         test_feats = itm.extract_feats(test_path)
-        
+
         print(f"Scores for {fn}:")
         for (house_name, room_name), feats in room_feature_db.items():
             score = compute_cosine_similarity(feats, test_feats)
