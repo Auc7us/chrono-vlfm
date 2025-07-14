@@ -124,7 +124,7 @@ class ChronoEnv:
             self.cam_list.append(cam)
 
         mmesh = chrono.ChTriangleMeshConnected()
-        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/hm3d_house_2/hm3d_0880.obj', False, True)
+        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/hm3d_880/hm3d_0880.obj', False, True)
         trimesh_shape = chrono.ChVisualShapeTriangleMesh()
         trimesh_shape.SetMesh(mmesh)
         trimesh_shape.SetName("ENV MESH")
@@ -194,7 +194,7 @@ class ChronoEnv:
         stop = all(self._get_stop(action) for action in actions)
         return new_observations, stop
 
-    ######################################## Common stop logic commented out for testing
+    ######################################## Common stop (Logical OR) (Preferred)
     # def step(self, actions):
     #     if not self._object_found:
     #         for i, action in enumerate(actions):
@@ -217,6 +217,7 @@ class ChronoEnv:
 
     #     return new_observations, self._object_found
 
+    ########################################  Global stop (Logical AND) (Testing Only) 
     def _get_stop(self, action):
         if isinstance(action, torch.Tensor) and action.numel() == 1 and action.item() == 0:
             print("STOPPED")

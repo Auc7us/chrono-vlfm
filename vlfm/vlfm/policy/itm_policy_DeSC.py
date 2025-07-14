@@ -235,7 +235,7 @@ class BaseITMPolicy(BaseObjectNavPolicy):
 
         # Save the figure to a file with a unique name
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        plt.savefig(f"tmp_vis/policy_info_visualization_{timestamp}.png")
+        plt.savefig(f"tmp_vis/policy_viz_robot_{self._robot_id}_{timestamp}.png")
         plt.close()
 
         return policy_info
