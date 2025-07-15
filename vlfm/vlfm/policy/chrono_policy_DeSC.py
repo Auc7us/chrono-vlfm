@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Union
+import cv2
 
 import numpy as np
 import torch
@@ -157,6 +158,15 @@ class ChronoMixin:
     def retrieve_peer_features(self):
         new_feats = self._comm_manager.retrieve(self._robot_id)
         self._peer_feats_index.extend(new_feats)
+    
+    def get_value_map(self) -> np.ndarray:
+        """
+        Quickly grab the latest H×W×3 RGB heatmap for this agent,
+        without all the extra plotting and file I/O in _get_policy_info.
+        """
+        # no frontier markers, just the raw fused value channels
+        raw_bgr = self._value_map.visualize(markers=[], reduce_fn=self._vis_reduce_fn)
+        return cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
 
 
 class ChronoITMPolicy(ChronoMixin, ITMPolicy):

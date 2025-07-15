@@ -2,6 +2,7 @@ import argparse
 import time
 import vlfm.policy.chrono_policy_DeSC as DeSC
 from vlfm.chrono_env.communication_manager import FusedFeatureExchangeManager
+from vlfm.utils.feature_fusion import overlay_robot_maps
 import math
 from math import atan, tan
 import numpy as np
@@ -12,6 +13,8 @@ import torch
 import sys
 import shutil
 import os
+import cv2
+import matplotlib.pyplot as plt
 
 vis_dirs = ["tmp_vis", "tmp_vis_2"]
 for d in vis_dirs:
@@ -394,6 +397,18 @@ if __name__ == "__main__":
         actions = [action_1, action_2]
         masks = torch.ones(1, 1)
         obs, stop = env.step(actions)
+
+        vm1 = policy_1.get_value_map()
+        vm2 = policy_2.get_value_map()
+
+        combined = overlay_robot_maps(vm1, vm2, alpha=0.5)
+        cv2.imwrite(f"tmp_vis/combined_{int(time_count*10):04d}.png",
+                    cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
+
+        plt.figure(figsize=(6, 6))
+        plt.imshow(combined)
+        plt.axis("off")
+        plt.pause(0.001)
 
 
         if stop:
