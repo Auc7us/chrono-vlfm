@@ -1,5 +1,3 @@
-# this one sort of works but takes a different path than the original when navigating to the bathroom
-
 import argparse
 import time
 import vlfm.policy.chrono_policy_DeSC as DeSC
@@ -85,7 +83,7 @@ class ChronoEnv:
             robot.SetFixed(True)
             self.my_system.Add(robot)
             self.virtual_robots.append(robot)
-            offset_pose = chrono.ChFramed(chrono.ChVector3d(0.3, 0, 0.25), chrono.QUNIT)
+            offset_pose = chrono.ChFramed(chrono.ChVector3d(0.3, 0, 0.75), chrono.QUNIT)
             vfov = self.fov
             hfov = 2*atan((FRAME_WIDTH/FRAME_HEIGHT)*tan(vfov/2))
 
