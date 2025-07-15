@@ -17,6 +17,8 @@ from .itm_policy import ITMPolicy, ITMPolicyV2, ITMPolicyV3
 import os
 from typing import Any, Dict, Union, Tuple
 
+import cv2
+
 
 class TorchActionIDs:
     STOP = torch.tensor([[0]], dtype=torch.long)
@@ -35,7 +37,7 @@ class ChronoMixin:
     _compute_frontiers: bool = True
     _visualize: bool = True
 
-    def __init__(self, camera_height: float, min_depth: float, max_depth: float, camera_fov: float, image_width: int, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, camera_height: float, min_depth: float, max_depth: float, camera_fov: float, image_width: int, robot_id: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._camera_height = camera_height
         self._min_depth = min_depth
@@ -45,6 +47,7 @@ class ChronoMixin:
         # Convert to radians if in degrees
         camera_fov_rad = np.radians(camera_fov)
         self._fx = self._fy = image_width / (2 * np.tan(camera_fov_rad / 2))
+        self._robot_id = robot_id
 
     def act(self, observations, rnn_hidden_states: Any, prev_actions: Any, masks: Tensor, deterministic: bool = False) -> Tuple[Tensor, Any]:
         parent_cls: BaseObjectNavPolicy = super()
@@ -79,6 +82,15 @@ class ChronoMixin:
             self._start_yaw = self._observations_cache["habitat_start_yaw"]
         info["start_yaw"] = self._start_yaw
         return info
+    
+    def get_value_map(self) -> np.ndarray:
+        """
+        Quickly grab the latest H×W×3 RGB heatmap for this agent,
+        without all the extra plotting and file I/O in _get_policy_info.
+        """
+        # no frontier markers, just the raw fused value channels
+        raw_bgr = self._value_map.visualize(markers=[], reduce_fn=self._vis_reduce_fn)
+        return cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2RGB)
 
     def _cache_observations(self: Union["ChronoMixin", BaseObjectNavPolicy], observations) -> None:
         """Caches the rgb, depth, and camera transform from the observations.

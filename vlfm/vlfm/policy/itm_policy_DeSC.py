@@ -306,7 +306,6 @@ class BaseITMPolicy(BaseObjectNavPolicy):
                 self._itm.infer(
                     rgb,
                     p.replace("target_object", self._target_object.replace("|", "/")),
-                    self._robot_id,
                 )
                 for p in self._text_prompt.split(PROMPT_SEPARATOR)
             ]

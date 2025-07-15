@@ -10,6 +10,11 @@ import pychrono as chrono
 import sys
 import os
 import torch
+import csv
+from vlfm.utils.feature_fusion import overlay_robot_maps
+import cv2
+import matplotlib.pyplot as plt
+
 # Assuming the script is located in the 'experiments/apartment' directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, '../../'))
@@ -52,8 +57,8 @@ class ChronoEnv:
             start_positions = [chrono.ChVector3d(-1.25, -1.25, 0.25)]
         else:
             start_positions = [
-                chrono.ChVector3d(-1.25, -1.25, 0.25),
-                chrono.ChVector3d(-1.25, 1.25, 0.25),
+                chrono.ChVector3d(-1.5, -2, 0.25),
+                chrono.ChVector3d(  -7, -2, 0.25),
             ]
 
         self.manager = sens.ChSensorManager(self.my_system)
@@ -66,7 +71,7 @@ class ChronoEnv:
             robot.SetFixed(True)
             self.my_system.Add(robot)
             self.virtual_robots.append(robot)
-            offset_pose = chrono.ChFramed(chrono.ChVector3d(0.3, 0, 0.25), chrono.QUNIT)
+            offset_pose = chrono.ChFramed(chrono.ChVector3d(0.3, 0, 0.75), chrono.QUNIT)
 
             lidar = sens.ChLidarSensor(
                 robot,
@@ -108,7 +113,7 @@ class ChronoEnv:
             self.cam_list.append(cam)
 
         mmesh = chrono.ChTriangleMeshConnected()
-        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/new_flat_3.obj', False, True)
+        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/hm3d_807/hm3d_0807.obj', False, True)
         trimesh_shape = chrono.ChVisualShapeTriangleMesh()
         trimesh_shape.SetMesh(mmesh)
         trimesh_shape.SetName("ENV MESH")
@@ -240,7 +245,7 @@ class ChronoEnv:
 
 
 if __name__ == "__main__":
-    env = ChronoEnv(['toilet', 'tv'], num_agents=2)
+    env = ChronoEnv(['tv', 'tv'], num_agents=2)
     obs = env.reset()
     # Take fake step
     # obs, stop = env.step(torch.tensor([[0]])) 
@@ -302,7 +307,8 @@ if __name__ == "__main__":
         vqa_prompt=vqa_prompt,
         coco_threshold=coco_threshold,
         non_coco_threshold=non_coco_threshold,
-        agent_radius=agent_radius
+        agent_radius=agent_radius,
+        robot_id = 1
     )
 
     policy_2 = vlfm.policy.chrono_policies.ChronoITMPolicyV2(
@@ -325,14 +331,21 @@ if __name__ == "__main__":
         vqa_prompt=vqa_prompt,
         coco_threshold=coco_threshold,
         non_coco_threshold=non_coco_threshold,
-        agent_radius=agent_radius
+        agent_radius=agent_radius,
+        robot_id = 2
     )
 
-    end_time = 10
+    end_time = 60
     control_timestep = 0.1
     time_count = 0
     masks = torch.zeros(1, 1)
     obs, stop = env.step([torch.tensor([[5]], dtype=torch.long)])
+
+    log_path = os.path.join("tmp_vis", "pose_log_naive.csv")
+    log_file = open(log_path, "w", newline="")
+    log_writer = csv.writer(log_file)
+    log_writer.writerow(["sim_time", "robot_id", "x", "y", "yaw"])
+
     while time_count < end_time:
         action_1, _ = policy_1.act(obs[0], None, None, masks)
         action_2, _ = policy_2.act(obs[1], None, None, masks)
@@ -340,41 +353,27 @@ if __name__ == "__main__":
         masks = torch.ones(1, 1)
         obs, stop = env.step(actions)
 
+        for idx, ob in enumerate(obs, start=1):
+            x = ob["gps"][0].item()
+            y = ob["gps"][1].item()
+            yaw = ob["compass"].item()
+            sim_time = time_count
+            log_writer.writerow([sim_time, idx, x, y, yaw])
+
+        vm1 = policy_1.get_value_map()
+        vm2 = policy_2.get_value_map()
+
+        combined = overlay_robot_maps(vm1, vm2, alpha=0.5)
+        cv2.imwrite(f"tmp_vis/combined_naive_{int(time_count*10):04d}.png",
+                    cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
+
+        plt.figure(figsize=(6, 6))
+        plt.imshow(combined)
+        plt.axis("off")
+        plt.pause(0.001)
+
 
         if stop:
             break
-
-        # # Visualize the depth and RGB images
-        # import matplotlib.pyplot as plt
-        # # Convert depth and RGB observations to numpy arrays
-        # # annotated_depth = torch.flip(obs["depth"], dims=[0, 1]).numpy()
-        # annotated_depth = obs["depth"].numpy()
-
-        # # annotated_depth = torch.flip(annotated_depth, dims=[0, 1]).numpy()e
-        # rgb_image = obs["rgb"].numpy()
-        # # Plot the depth and RGB images
-        # plt.figure(figsize=(15, 5))
-        # # Annotated Depth Image
-        # plt.subplot(1, 2, 1)
-        # plt.title("Annotated Depth")
-        # # Use grayscale for depth visualization
-        # plt.imshow(annotated_depth, cmap='gray')
-        # plt.axis('off')
-        # # RGB Image
-        # plt.subplot(1, 2, 2)
-        # plt.title("RGB Image")
-        # plt.imshow(rgb_image)  # No need for cmap, as it's an RGB image
-        # plt.axis('off')
-        # # Display the plot
-        # plt.tight_layout()
-        # # ---------------------------------------
-
-        # # Save the figure to a file with a unique name
-        # timestamp = time.strftime("%Y%m%d-%H%M%S")
-        # plt.savefig(f"tmp_vis_2/policy_info_visualization_{timestamp}.png")
-        # plt.close()
-
-        # obs, stop = env.step(torch.tensor(0))
-        # print(vlfm_policy._policy_info)
 
         time_count += control_timestep
