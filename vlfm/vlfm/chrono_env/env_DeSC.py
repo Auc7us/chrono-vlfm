@@ -15,6 +15,7 @@ import shutil
 import os
 import cv2
 import matplotlib.pyplot as plt
+import csv
 
 vis_dirs = ["tmp_vis", "tmp_vis_2"]
 for d in vis_dirs:
@@ -391,6 +392,12 @@ if __name__ == "__main__":
     time_count = 0
     masks = torch.zeros(1, 1)
     obs, stop = env.step([torch.tensor([[5]], dtype=torch.long)])
+
+    log_path = os.path.join("tmp_vis", "pose_log.csv")
+    log_file = open(log_path, "w", newline="")
+    log_writer = csv.writer(log_file)
+    log_writer.writerow(["sim_time", "robot_id", "x", "y", "yaw"])
+
     while time_count < end_time:
         action_1, _ = policy_1.act(obs[0], None, None, masks)
         action_2, _ = policy_2.act(obs[1], None, None, masks)
@@ -398,20 +405,28 @@ if __name__ == "__main__":
         masks = torch.ones(1, 1)
         obs, stop = env.step(actions)
 
-        vm1 = policy_1.get_value_map()
-        vm2 = policy_2.get_value_map()
+        for idx, ob in enumerate(obs, start=1):
+            x = ob["gps"][0].item()
+            y = ob["gps"][1].item()
+            yaw = ob["compass"].item()
+            sim_time = time_count
+            log_writer.writerow([sim_time, idx, x, y, yaw])
 
-        combined = overlay_robot_maps(vm1, vm2, alpha=0.5)
-        cv2.imwrite(f"tmp_vis/combined_{int(time_count*10):04d}.png",
-                    cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
+        # vm1 = policy_1.get_value_map()
+        # vm2 = policy_2.get_value_map()
 
-        plt.figure(figsize=(6, 6))
-        plt.imshow(combined)
-        plt.axis("off")
-        plt.pause(0.001)
+        # combined = overlay_robot_maps(vm1, vm2, alpha=0.5)
+        # cv2.imwrite(f"tmp_vis/combined_{int(time_count*10):04d}.png",
+        #             cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
+
+        # plt.figure(figsize=(6, 6))
+        # plt.imshow(combined)
+        # plt.axis("off")
+        # plt.pause(0.001)
 
 
         if stop:
+            log_file.close()
             break
 
         time_count += control_timestep
