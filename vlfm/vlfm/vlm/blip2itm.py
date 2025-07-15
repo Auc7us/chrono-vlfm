@@ -72,8 +72,8 @@ class BLIP2ITMClient:
         self.url = f"http://localhost:{port}/blip2itm"
         self.device = device or (torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"))
 
-    def infer(self, image: np.ndarray, txt: str) -> float:
-        print(f"BLIP2ITMClient.infer: {image.shape}, {txt}")
+    def infer(self, image: np.ndarray, txt: str, robot_id: int) -> float:
+        # print(f"Robot {robot_id}: BLIP2ITMClient.infer: {txt}")
         out = send_request(self.url, image=image, txt=txt)
         feats = torch.tensor(out["image_feats"], device=self.device)
         return out["score"], feats

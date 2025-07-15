@@ -5,6 +5,7 @@ import time
 import vlfm.policy.chrono_policy_DeSC as DeSC
 from vlfm.chrono_env.communication_manager import FusedFeatureExchangeManager
 import math
+from math import atan, tan
 import numpy as np
 import pychrono.sensor as sens
 import pychrono.irrlicht as chronoirr
@@ -68,13 +69,15 @@ class ChronoEnv:
             start_positions = [chrono.ChVector3d(-1.25, -1.25, 0.25)]
         else:
             start_positions = [
-                chrono.ChVector3d( -1.25, 0, 0.25),
-                chrono.ChVector3d(-12.25, 0, 0.25),
+                chrono.ChVector3d(-1.5, -2, 0.25), # Robot 1
+                chrono.ChVector3d(  -7, -2, 0.25), # Robot 2
             ]
 
         self.manager = sens.ChSensorManager(self.my_system)
         intensity_moderate = 1.0
         self.manager.scene.AddAreaLight(chrono.ChVector3f(0, 0, 1), chrono.ChColor(intensity_moderate, intensity_moderate, intensity_moderate), 500.0, chrono.ChVector3f(1, 0, 0), chrono.ChVector3f(0, -1, 0))
+
+        robot_id = 1
 
         for pos in start_positions:
             robot = chrono.ChBodyEasyBox(0.25, 0.25, 0.5, 100, True, True, patch_mat)
@@ -83,6 +86,9 @@ class ChronoEnv:
             self.my_system.Add(robot)
             self.virtual_robots.append(robot)
             offset_pose = chrono.ChFramed(chrono.ChVector3d(0.3, 0, 0.25), chrono.QUNIT)
+            vfov = self.fov
+            hfov = 2*atan((FRAME_WIDTH/FRAME_HEIGHT)*tan(vfov/2))
+
 
             lidar = sens.ChLidarSensor(
                 robot,
@@ -90,9 +96,9 @@ class ChronoEnv:
                 offset_pose,
                 self.image_width,
                 self.image_height,
-                self.fov,
-                chrono.CH_PI/6,
-                -chrono.CH_PI/6,
+                hfov,
+                vfov/2,
+                -vfov/2,
                 3.66,
                 sens.LidarBeamShape_RECTANGULAR,
                 1,
@@ -118,13 +124,14 @@ class ChronoEnv:
             cam.SetName("Camera Sensor")
             cam.SetLag(self.lag)
             cam.SetCollectionWindow(self.exposure_time)
-            cam.PushFilter(sens.ChFilterVisualize(self.image_width, self.image_height, "rgb camera"))
+            cam.PushFilter(sens.ChFilterVisualize(self.image_width, self.image_height, f"rgb camera {robot_id}"))
             cam.PushFilter(sens.ChFilterRGBA8Access())
             self.manager.AddSensor(cam)
             self.cam_list.append(cam)
+            robot_id += 1
 
         mmesh = chrono.ChTriangleMeshConnected()
-        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/hm3d_880/hm3d_0880.obj', False, True)
+        mmesh.LoadWavefrontMesh(project_root + '/data/chrono_environment/hm3d_807/hm3d_0807.obj', False, True)
         trimesh_shape = chrono.ChVisualShapeTriangleMesh()
         trimesh_shape.SetMesh(mmesh)
         trimesh_shape.SetName("ENV MESH")
@@ -136,27 +143,28 @@ class ChronoEnv:
         mesh_body.SetFixed(True)
         self.my_system.Add(mesh_body)
 
-        # ---------------------------------------
-        # Add a target object to the environment
+        # # ---------------------------------------
+        # # Add a target object to the environment
 
-        chair_path = os.path.join(project_root, "data/chrono_environment/target_object/blue_chair.obj")  # Adjust as needed
-        chair_mat = chrono.ChContactMaterialSMC()
+        # add_obj_path = os.path.join(project_root, "data/chrono_environment/target_object/no_tv.obj")  # Adjust as needed
+        # add_obj_mat = chrono.ChContactMaterialSMC()
 
-        chair = chrono.ChBodyEasyMesh(
-            chair_path,
-            100,        # density
-            False,      # no collision
-            True,       # visualize
-            True,       # smooth shading
-            chair_mat,
-            0.05       # envelope
-        )
-        chair.SetRot(chrono.Q_ROTATE_Y_TO_Z)
-        chair.SetPos(chrono.ChVector3d(-8.5, 1.5, 0.50))  
-        chair.SetFixed(True)
-        self.my_system.Add(chair)
+        # add_obj = chrono.ChBodyEasyMesh(
+        #     add_obj_path,
+        #     100,        # density
+        #     False,      # no collision
+        #     True,       # visualize
+        #     True,       # smooth shading
+        #     add_obj_mat,
+        #     0.05       # envelope
+        # )
+        # # add_obj.SetRot(chrono.Q_ROTATE_Y_TO_Z)
+        # add_obj.SetPos(chrono.ChVector3d(0.0, 0.0, 0.0))
+        # # add_obj.SetPos(chrono.ChVector3d(-12.5, 1.5, 0.50))  
+        # add_obj.SetFixed(True)
+        # self.my_system.Add(add_obj)
 
-        # ---------------------------------------
+        # # ---------------------------------------
 
         self.vis = chronoirr.ChVisualSystemIrrlicht(self.my_system)
         self.vis.SetCameraVertical(chrono.CameraVerticalDir_Z)
@@ -322,8 +330,8 @@ if __name__ == "__main__":
     hole_area_thresh = 100000
     use_vqa = False
     vqa_prompt = "Is this "
-    coco_threshold = 0.8
-    non_coco_threshold = 0.4
+    coco_threshold = 0.65
+    non_coco_threshold = 0.3
     agent_radius = 0.15
     comms = FusedFeatureExchangeManager()
 
@@ -377,7 +385,7 @@ if __name__ == "__main__":
         comms_manager=comms
     )
 
-    end_time = 30
+    end_time = 20
     control_timestep = 0.1
     time_count = 0
     masks = torch.zeros(1, 1)

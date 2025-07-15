@@ -68,11 +68,11 @@ class BaseITMPolicy(BaseObjectNavPolicy):
     def _explore(self, observations: Union[Dict[str, Tensor], "TensorDict"]) -> Tensor:
         frontiers = self._observations_cache["frontier_sensor"]
         if np.array_equal(frontiers, np.zeros((1, 2))) or len(frontiers) == 0:
-            print("No frontiers found during exploration, stopping.")
+            print("Robot",self._robot_id,": No frontiers found during exploration, stopping.")
             return self._stop_action
         best_frontier, best_value = self._get_best_frontier(observations, frontiers)
         os.environ["DEBUG_INFO"] = f"Best value: {best_value*100:.2f}%"
-        print(f"Best value: {best_value*100:.2f}%")
+        print(f"Robot{self._robot_id}: Best value: {best_value*100:.2f}%")
         pointnav_action = self._pointnav(best_frontier, stop=False)
 
         return pointnav_action
@@ -139,7 +139,7 @@ class BaseITMPolicy(BaseObjectNavPolicy):
                 break
 
         if best_frontier_idx is None:
-            print("All frontiers are cyclic. Just choosing the closest one.")
+            print("Robot ",self._robot_id,": All frontiers are cyclic. Just choosing the closest one.")
             os.environ["DEBUG_INFO"] += "All frontiers are cyclic. "
             best_frontier_idx = max(
                 range(len(frontiers)),
@@ -306,6 +306,7 @@ class BaseITMPolicy(BaseObjectNavPolicy):
                 self._itm.infer(
                     rgb,
                     p.replace("target_object", self._target_object.replace("|", "/")),
+                    self._robot_id,
                 )
                 for p in self._text_prompt.split(PROMPT_SEPARATOR)
             ]
@@ -316,7 +317,7 @@ class BaseITMPolicy(BaseObjectNavPolicy):
         self.retrieve_peer_features()
         batch_results = self._attach_peer_scores(batch_results)
 
-        print("Length of the peer features received by Agent", self._robot_id, ":", len(self._peer_feats_index))
+        # print("Robot",self._robot_id,": Length of the peer features received by Agent", self._robot_id, ":", len(self._peer_feats_index))
         
         for infer_out, (rgb, depth, tf, min_depth, max_depth, fov) in zip(
             batch_results, self._observations_cache["value_map_rgbd"]
